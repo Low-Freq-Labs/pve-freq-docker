@@ -1,0 +1,77 @@
+# ──────────────────────────────────────────────────────────────────
+# PVE FREQ — Docker Compose
+#
+# Quick start:
+#   docker compose up -d
+#   docker exec -it pve-freq freq init    ← first-time setup (same as bare metal)
+#
+# Dashboard:
+#   http://localhost:8888
+#
+# CLI commands (v1.0.0 domain syntax):
+#   docker exec pve-freq freq doctor
+#   docker exec pve-freq freq fleet status
+#   docker exec pve-freq freq vm list
+#   docker exec pve-freq freq host list
+#
+# Interactive TUI:
+#   docker exec -it pve-freq freq
+#
+# Logs:
+#   docker compose logs -f
+# ──────────────────────────────────────────────────────────────────
+
+services:
+  freq:
+    build: .
+    image: pve-freq:local
+    container_name: pve-freq
+    restart: unless-stopped
+
+    ports:
+      - "8888:8888"
+
+    environment:
+      - TZ=${TZ:-UTC}
+
+    volumes:
+      # Config — user-editable, persists across updates
+      - ./config:/config
+
+      # Data — vault, keys, logs, cache (Docker-managed)
+      - freq-data:/data
+
+      # SSH keys — mount your fleet SSH key (read-only)
+      # Uncomment and adjust the path to your SSH key:
+      # - ~/.ssh/id_ed25519:/home/freq/.ssh/id_ed25519:ro
+      # - ~/.ssh/id_rsa:/home/freq/.ssh/id_rsa:ro
+      # - ~/.ssh/known_hosts:/home/freq/.ssh/known_hosts:ro
+
+    # Read-only root filesystem — only volumes and tmpfs are writable
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+      - /opt/pve-freq:uid=1000,gid=1000
+      - /home/freq:uid=1000,gid=1000
+
+    # Prevent in-container privilege escalation
+    security_opt:
+      - no-new-privileges:true
+
+    # Resource limits (adjust to your needs)
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  freq-data:

@@ -1,0 +1,34 @@
+# Version control
+.git
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Documentation (not needed in image)
+*.md
+LICENSE
+docs/
+
+# Docker files (prevent recursive context)
+compose.yml
+docker-compose*.yml
+.dockerignore
+
+# CI
+.github/
+
+# Python artifacts
+__pycache__
+*.pyc
+*.pyo
+*.egg-info/
+build/
+
+# Environment / secrets
+.env
+.env.*
+*.key
+*.pem
+credentials/

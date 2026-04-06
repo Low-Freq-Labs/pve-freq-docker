@@ -1,0 +1,113 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout pve-freq source
+        uses: actions/checkout@v4
+        with:
+          repository: Low-Freq-Labs/pve-freq
+          path: pve-freq-src
+
+      - name: Set image name
+        run: echo "IMAGE_NAME=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Copy pve-freq source into Docker build context
+        run: |
+          cp -r pve-freq-src/freq freq/
+          cp pve-freq-src/pyproject.toml .
+          cp pve-freq-src/install.sh .
+          cp pve-freq-src/README.md pve-freq-src/LICENSE pve-freq-src/CHANGELOG.md .
+          echo "Source files copied for Docker build"
+
+      - uses: docker/setup-qemu-action@v4
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # Push builds: multi-platform, push to registry
+      - name: Build and push
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # PR builds: single-platform, load locally for scanning
+      - name: Build (PR)
+        if: github.event_name == 'pull_request'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: pve-freq:pr-test
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Scan pushed image from registry
+      - name: Trivy scan (registry)
+        if: github.event_name != 'pull_request'
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          format: table
+          severity: CRITICAL,HIGH
+
+      # Scan PR image locally — catch vulnerabilities before merge
+      - name: Trivy scan (PR)
+        if: github.event_name == 'pull_request'
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          image-ref: pve-freq:pr-test
+          format: table
+          severity: CRITICAL,HIGH

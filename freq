@@ -1,0 +1,42 @@
+#!/bin/sh
+# ──────────────────────────────────────────────────────────────────
+# PVE FREQ — Docker CLI wrapper
+#
+# Run any freq command cleanly:
+#   freq init               first-time setup
+#   freq doctor             diagnostics
+#   freq fleet status       fleet health
+#   freq vm list            VMs across cluster
+#   freq                    interactive TUI
+#
+# On first use, installs itself to /usr/local/bin so 'freq' works
+# from anywhere — no ./freq needed after that.
+# ──────────────────────────────────────────────────────────────────
+CONTAINER="${FREQ_CONTAINER:-pve-freq}"
+SCRIPT_PATH="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+
+# ── Self-install to PATH on first use ──
+if ! command -v freq >/dev/null 2>&1 || [ "$(command -v freq)" = "$SCRIPT_PATH" ]; then
+    if [ ! -L /usr/local/bin/freq ] && [ ! -f /usr/local/bin/freq ]; then
+        if ln -sf "$SCRIPT_PATH" /usr/local/bin/freq 2>/dev/null; then
+            echo "[freq] Installed to /usr/local/bin/freq — use 'freq' from anywhere"
+        fi
+    fi
+fi
+
+# ── Run the command ──
+if [ -t 0 ] && [ -t 1 ]; then
+    docker exec -it "$CONTAINER" freq "$@"
+else
+    docker exec "$CONTAINER" freq "$@"
+fi
+RC=$?
+
+# ── Fix permissions after init ──
+# freq init runs as root and creates root-owned files.
+# freq serve runs as the freq user and needs write access.
+if [ "$1" = "init" ]; then
+    docker exec "$CONTAINER" chown -R freq:freq /config /data /opt/pve-freq 2>/dev/null
+fi
+
+exit $RC

@@ -1,0 +1,13 @@
+# Built wheels (fetched at build time)
+dist/*.whl
+
+# Runtime config (user-specific)
+config/*
+!config/.gitkeep
+!config/*.example
+
+# Environment
+.env
+
+# Docker
+.docker/
